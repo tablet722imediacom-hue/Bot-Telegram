@@ -24,6 +24,7 @@ FILE_JSON = "waifus.json"
 PERSONAGGI_PER_PAGINA = 20
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # altrimenti logga ogni richiesta, token compreso
 
 # --- INIZIALIZZAZIONE DATABASE ---
 def setup_db():
@@ -50,6 +51,14 @@ def get_random_waifu():
     if not immagini: return None, None, None
     immagine_scelta = random.choice(immagini)
     return nome, serie, immagine_scelta
+
+def salva_file_id(percorso, file_id):
+    # Dopo il primo invio da disco, il percorso diventa il file_id di Telegram:
+    # dalla volta dopo la foto parte dai server Telegram senza ricaricarla.
+    with open(FILE_JSON, 'r', encoding='utf-8') as f: dati = json.load(f)
+    for w in dati:
+        w['images'] = [file_id if i == percorso else i for i in w.get('images', [])]
+    with open(FILE_JSON, 'w', encoding='utf-8') as f: json.dump(dati, f, indent=4, ensure_ascii=False)
 
 # --- LOGICA DI SPAWN ED ESCAPE ---
 async def waifu_escapes(chat_id, context, message_id):
@@ -109,6 +118,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif os.path.exists(percorso):
                 with open(percorso, 'rb') as foto:
                     msg = await context.bot.send_photo(chat_id=chat_id, photo=foto, caption=testo, parse_mode='Markdown')
+                try:
+                    salva_file_id(percorso, msg.photo[-1].file_id)
+                    print(f"[DEBUG] file_id salvato per {percorso}")
+                except Exception as e:
+                    print(f"[ERRORE] salvataggio file_id per {percorso}: {e}")
             else:
                 # Invio tramite File ID (Cassaforte di Telegram)
                 msg = await context.bot.send_photo(chat_id=chat_id, photo=percorso, caption=testo, parse_mode='Markdown')
