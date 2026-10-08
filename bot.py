@@ -15,7 +15,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 CANALE_ID = os.getenv("CANALE_ID")
-TUO_ID_ADMIN = int(os.getenv("ADMIN_ID"))  # <-- Adesso lo pesca dal file segreto!
+TUO_ID_ADMIN = int(os.getenv("ADMIN_ID"))  
 
 MESSAGGI_PER_DROP = 40
 MESSAGGI_SCADENZA = 20
@@ -301,7 +301,6 @@ async def comando_importawaifu(update: Update, context: ContextTypes.DEFAULT_TYP
             serie_waifu = char['media']['nodes'][0]['title'].get('english') or char['media']['nodes'][0]['title'].get('romaji') if char['media']['nodes'] else "Sconosciuta"
 
             try:
-                # Invio al canale segreto
                 msg_backup = await context.bot.send_photo(chat_id=int(CANALE_ID), photo=immagine_url, caption=f"📝 ANILIST\n🌸 {nome_waifu}\n📚 {serie_waifu}")
             except Exception:
                 req_img = urllib.request.Request(immagine_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -361,6 +360,30 @@ async def aggiungi_waifu_foto(update: Update, context: ContextTypes.DEFAULT_TYPE
     if waifu_trovata: await update.message.reply_text(f"✅ Nuova foto per **{nome_waifu}** salvata in cassaforte!", parse_mode='Markdown')
     else: await update.message.reply_text(f"✅ Nuova waifu in cassaforte!\n🌸 **{nome_waifu}**\n📚 *{serie_waifu}*", parse_mode='Markdown')
 
+# --- MENU HELP E START ---
+async def comando_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    testo = (
+        "🤖 **COMANDI DISPONIBILI** 🤖\n\n"
+        "🎮 *Per tutti i giocatori:*\n"
+        "• `/cattura [nome]` - Cattura la waifu appena apparsa nel gruppo.\n"
+        "• `/listaharem` - Sfoglia la collezione delle waifu che hai catturato.\n"
+        "• `/listawaifu` - Guarda il catalogo completo di tutte le waifu esistenti nel gioco.\n"
+        "• `/help` - Mostra questo messaggio.\n"
+    )
+    
+    # Se chi scrive è l'Admin, aggiunge anche i comandi segreti
+    if user_id == TUO_ID_ADMIN:
+        testo += (
+            "\n👑 *Solo per Amministratori:*\n"
+            "• `/importawaifu [Nome e Cognome]` - Scarica una waifu da AniList.\n"
+            "• `/addwaifu [Nome] | [Serie]` - (Come didascalia di una foto) Aggiunge una waifu manuale.\n"
+            "• `/delwaifu [Nome] | [Serie]` - Elimina definitivamente una waifu dal server.\n"
+        )
+        
+    await update.message.reply_text(testo, parse_mode='Markdown')
+
 # --- AVVIO BOT ---
 def main():
     if not TOKEN or not CANALE_ID:
@@ -370,6 +393,9 @@ def main():
     setup_db()
     app = Application.builder().token(TOKEN).build()
     
+    # Comandi utente e admin
+    app.add_handler(CommandHandler("start", comando_help))
+    app.add_handler(CommandHandler("help", comando_help))
     app.add_handler(CommandHandler("listaharem", comando_listaharem))
     app.add_handler(CallbackQueryHandler(listaharem_callback, pattern="^listaharempage_"))
     app.add_handler(CommandHandler("cattura", comando_cattura))
@@ -379,7 +405,7 @@ def main():
     app.add_handler(CommandHandler("importawaifu", comando_importawaifu))
     app.add_handler(MessageHandler(filters.PHOTO & filters.CaptionRegex(r'^/addwaifu'), aggiungi_waifu_foto))
     
-    # Questo intercetta tutti i messaggi normali e li conta
+    # Questo intercetta tutti i messaggi normali e li conta (DEVE RIMANERE ALLA FINE)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot avviato! Modalità spie [DEBUG] attiva. Scrivi nel gruppo per testare.")
