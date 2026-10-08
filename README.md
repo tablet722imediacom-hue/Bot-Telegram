@@ -7,6 +7,7 @@ Un bot Telegram in stile gacha per collezionare waifu.
 **Installa le dipendenze:**
    ```bash
    pip install python-telegram-bot python-dotenv
+   ``` 
 
 🎮 Comandi Principali
 
