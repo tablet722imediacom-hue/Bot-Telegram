@@ -26,3 +26,5 @@ Un bot Telegram in stile gacha per collezionare waifu.
     /delwaifu [Nome] | [Serie] - Elimina un personaggio.
 
     /addwaifu [Nome] | [Serie] - (Usato come didascalia su una foto).
+
+    /conto - Mostra il numero totale di waifu nel database.
