@@ -114,10 +114,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             print("[DEBUG] Invio foto in corso...")
             if percorso.startswith("http://") or percorso.startswith("https://"):
-                msg = await context.bot.send_photo(chat_id=chat_id, photo=percorso, caption=testo, parse_mode='Markdown')
+                msg = await context.bot.send_photo(chat_id=chat_id, photo=percorso, caption=testo, parse_mode='Markdown', protect_content=True)
             elif os.path.exists(percorso):
                 with open(percorso, 'rb') as foto:
-                    msg = await context.bot.send_photo(chat_id=chat_id, photo=foto, caption=testo, parse_mode='Markdown')
+                    msg = await context.bot.send_photo(chat_id=chat_id, photo=foto, caption=testo, parse_mode='Markdown', protect_content=True)
                 try:
                     salva_file_id(percorso, msg.photo[-1].file_id)
                     print(f"[DEBUG] file_id salvato per {percorso}")
@@ -125,8 +125,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     print(f"[ERRORE] salvataggio file_id per {percorso}: {e}")
             else:
                 # Invio tramite File ID (Cassaforte di Telegram)
-                msg = await context.bot.send_photo(chat_id=chat_id, photo=percorso, caption=testo, parse_mode='Markdown')
-            print("[DEBUG] FOTO INVIATA CON SUCCESSO! 🎉")
+                msg = await context.bot.send_photo(chat_id=chat_id, photo=percorso, caption=testo, parse_mode='Markdown', protect_content=True)
+            print("[DEBUG] FOTO INVIATA CON SUCCESSO E PROTETTA! 🎉")
         except Exception as e:
             print(f"[ERRORE CRITICO INVIO FOTO]: {e}")
             return
@@ -264,6 +264,19 @@ async def listawaifu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.edit_message_text(text=testo, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([bottoni]) if bottoni else None)
 
 # --- COMANDI AMMINISTRATORE ---
+async def comando_conto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != TUO_ID_ADMIN: return
+    
+    if not os.path.exists(FILE_JSON):
+        return await update.message.reply_text("❌ Il database è vuoto o non esiste ancora.", parse_mode='Markdown')
+        
+    with open(FILE_JSON, 'r', encoding='utf-8') as f: 
+        dati = json.load(f)
+        
+    totale = len(dati)
+    testo = f"📊 **Statistiche Database**\n\nAttualmente ci sono **{totale}** waifu registrate nel gioco."
+    await update.message.reply_text(testo, parse_mode='Markdown')
+
 async def comando_delwaifu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != TUO_ID_ADMIN: return
     testo = " ".join(context.args).strip()
@@ -394,6 +407,7 @@ async def comando_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• `/importawaifu [Nome e Cognome]` - Scarica una waifu da AniList.\n"
             "• `/addwaifu [Nome] | [Serie]` - (Come didascalia di una foto) Aggiunge una waifu manuale.\n"
             "• `/delwaifu [Nome] | [Serie]` - Elimina definitivamente una waifu dal server.\n"
+            "• `/conto` - Mostra il numero totale di waifu nel database.\n"
         )
         
     await update.message.reply_text(testo, parse_mode='Markdown')
@@ -415,6 +429,7 @@ def main():
     app.add_handler(CommandHandler("cattura", comando_cattura))
     app.add_handler(CommandHandler("listawaifu", comando_listawaifu))  
     app.add_handler(CallbackQueryHandler(listawaifu_callback, pattern="^listapage_")) 
+    app.add_handler(CommandHandler("conto", comando_conto))
     app.add_handler(CommandHandler("delwaifu", comando_delwaifu))
     app.add_handler(CommandHandler("importawaifu", comando_importawaifu))
     app.add_handler(MessageHandler(filters.PHOTO & filters.CaptionRegex(r'^/addwaifu'), aggiungi_waifu_foto))
