@@ -9,7 +9,8 @@ import urllib.request
 from dotenv import load_dotenv
 from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, Defaults, filters, ContextTypes
+from telegram.error import TelegramError
 
 # --- IMPOSTAZIONI ---
 load_dotenv()
@@ -20,6 +21,7 @@ TUO_ID_ADMIN = int(os.getenv("ADMIN_ID"))
 MESSAGGI_PER_DROP = 40
 MESSAGGI_SCADENZA = 20
 TEMPO_SCADENZA_SEC = 120
+TEMPO_EFFIMERO_SEC = 5
 FILE_JSON = "waifus.json"
 PERSONAGGI_PER_PAGINA = 20
 
@@ -140,6 +142,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'timer_task': timer
         }
 
+async def cancella_dopo(msg, secondi):
+    # Il messaggio resta visibile a tutti e il bot lo cancella dopo qualche secondo.
+    await asyncio.sleep(secondi)
+    try: await msg.delete()
+    except TelegramError: pass
+
 # --- COMANDO CATTURA ---
 async def comando_cattura(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -147,7 +155,8 @@ async def comando_cattura(update: Update, context: ContextTypes.DEFAULT_TYPE):
     active = context.chat_data.get('active_waifu')
     
     if not active:
-        await update.message.reply_text("❌ Non ci sono waifu da catturare in questo momento!")
+        msg = await update.message.reply_text("❌ Non ci sono waifu da catturare in questo momento!")
+        context.application.create_task(cancella_dopo(msg, TEMPO_EFFIMERO_SEC))
         return
 
     waifu_nome_lower = active['waifu_nome'].lower()
@@ -354,10 +363,15 @@ async def comando_importawaifu(update: Update, context: ContextTypes.DEFAULT_TYP
 
     except Exception as e:
         if "404" in str(e):
-            await msg_attesa.edit_text("❌ Personaggio non trovato su AniList!\n\n💡 *Consiglio:* Usa il nome inglese corretto, o prova a scrivere un nome più corto (es. solo Nome e Cognome, senza i secondi nomi).", parse_mode='Markdown')
+            testo_errore = "❌ Personaggio non trovato su AniList!\n\n💡 *Consiglio:* Usa il nome inglese corretto, o prova a scrivere un nome più corto (es. solo Nome e Cognome, senza i secondi nomi)."
         else:
-            await msg_attesa.edit_text("❌ C'è stato un problema di connessione con i server di AniList.")
+            testo_errore = "❌ C'è stato un problema di connessione con i server di AniList."
         print(f"[DEBUG API] Errore AniList: {e}")
+        # msg_attesa può essere già stato cancellato: in quel caso l'errore va in un messaggio nuovo
+        try:
+            await msg_attesa.edit_text(testo_errore, parse_mode='Markdown')
+        except TelegramError:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=testo_errore, parse_mode='Markdown')
 
 async def aggiungi_waifu_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != TUO_ID_ADMIN: return
@@ -412,6 +426,14 @@ async def comando_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     await update.message.reply_text(testo, parse_mode='Markdown')
 
+# --- GESTIONE ERRORI ---
+async def gestisci_errore(update: object, context: ContextTypes.DEFAULT_TYPE):
+    # Gli errori di Telegram (rete, messaggi spariti...) stanno su una riga; il resto tiene il traceback.
+    if isinstance(context.error, TelegramError):
+        print(f"[ERRORE TELEGRAM] {type(context.error).__name__}: {context.error}")
+    else:
+        logging.getLogger(__name__).error("Errore non gestito", exc_info=context.error)
+
 # --- AVVIO BOT ---
 def main():
     if not TOKEN or not CANALE_ID:
@@ -419,7 +441,8 @@ def main():
         return
 
     setup_db()
-    app = Application.builder().token(TOKEN).build()
+    # Se il messaggio a cui rispondere è stato cancellato, la risposta parte lo stesso senza citazione
+    app = Application.builder().token(TOKEN).defaults(Defaults(allow_sending_without_reply=True)).build()
     
     # Comandi utente e admin
     app.add_handler(CommandHandler("start", comando_help))
@@ -436,6 +459,8 @@ def main():
     
     # Questo intercetta tutti i messaggi normali e li conta (DEVE RIMANERE ALLA FINE)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    app.add_error_handler(gestisci_errore)
 
     print("Bot avviato! Modalità spie [DEBUG] attiva. Scrivi nel gruppo per testare.")
     app.run_polling(drop_pending_updates=True)
